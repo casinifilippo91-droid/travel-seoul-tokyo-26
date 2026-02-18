@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seoul × Tokyo — Travel Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  :root {
+    --bg: #0e0e10;
+    --surface: #1a1a1e;
+    --surface2: #242428;
+    --border: rgba(255,255,255,0.08);
+    --text: #f0ede8;
+    --muted: #888;
+    --accent: #e8d5b0;
+    --seoul: #c9a96e;
+    --tokyo: #7eb8d4;
+
+    --cat-restaurant: #e07a5f;
+    --cat-bar: #9b72cf;
+    --cat-museum: #5c9ead;
+    --cat-shop: #e8a838;
+    --cat-experience: #6ab187;
+    --cat-hotel: #e8d5b0;
+    --cat-other: #888;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* HEADER */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    z-index: 1000;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .logo {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.2rem;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .logo span.sep { color: var(--muted); margin: 0 6px; }
+  .logo span.city-s { color: var(--seoul); }
+  .logo span.city-t { color: var(--tokyo); }
+
+  /* CITY FILTER */
+  .city-tabs {
+    display: flex;
+    gap: 6px;
+  }
+  .city-tab {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .city-tab.active-seoul { background: var(--seoul); color: #000; border-color: var(--seoul); font-weight: 500; }
+  .city-tab.active-tokyo { background: var(--tokyo); color: #000; border-color: var(--tokyo); font-weight: 500; }
+  .city-tab.active-all { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 500; }
+
+  /* CATEGORY FILTER */
+  .cat-filters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .cat-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .cat-btn .dot { width: 7px; height: 7px; border-radius: 50%; }
+  .cat-btn.active { color: var(--text); border-color: currentColor; }
+  .cat-btn[data-cat="restaurant"].active { color: var(--cat-restaurant); }
+  .cat-btn[data-cat="bar"].active { color: var(--cat-bar); }
+  .cat-btn[data-cat="museum"].active { color: var(--cat-museum); }
+  .cat-btn[data-cat="shop"].active { color: var(--cat-shop); }
+  .cat-btn[data-cat="experience"].active { color: var(--cat-experience); }
+  .cat-btn[data-cat="hotel"].active { color: var(--cat-hotel); }
+  .cat-btn[data-cat="other"].active { color: var(--cat-other); }
+
+  .btn-add {
+    margin-left: auto;
+    padding: 7px 16px;
+    border-radius: 20px;
+    background: var(--accent);
+    color: #000;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: opacity 0.2s;
+  }
+  .btn-add:hover { opacity: 0.85; }
+
+  /* MAP */
+  #map {
+    flex: 1;
+    width: 100%;
+  }
+
+  /* LEAFLET OVERRIDES */
+  .leaflet-container { background: #1a1a1e; }
+
+  /* CUSTOM POPUP */
+  .leaflet-popup-content-wrapper {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
+    color: var(--text) !important;
+    max-width: 280px;
+  }
+  .leaflet-popup-tip { background: var(--surface) !important; }
+  .leaflet-popup-content { margin: 16px !important; font-family: 'DM Sans', sans-serif; }
+
+  .popup-cat-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+  }
+  .popup-name {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.1rem;
+    margin-bottom: 4px;
+    line-height: 1.2;
+  }
+  .popup-city-badge {
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .popup-hours {
+    font-size: 0.75rem;
+    color: var(--accent);
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+  .popup-hours strong { color: var(--text); }
+  .popup-desc {
+    font-size: 0.8rem;
+    color: #bbb;
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+  .popup-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .popup-link {
+    font-size: 0.75rem;
+    padding: 5px 12px;
+    border-radius: 20px;
+    text-decoration: none;
+    background: rgba(255,255,255,0.07);
+    color: var(--text);
+    transition: background 0.2s;
+    border: 1px solid var(--border);
+  }
+  .popup-link:hover { background: rgba(255,255,255,0.14); }
+  .popup-delete {
+    font-size: 0.75rem;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: rgba(220,50,50,0.15);
+    color: #e07070;
+    border: 1px solid rgba(220,50,50,0.2);
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: background 0.2s;
+  }
+  .popup-delete:hover { background: rgba(220,50,50,0.3); }
+
+  /* MODAL ADD PLACE */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal h2 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 1.3rem;
+    margin-bottom: 20px;
+  }
+
+  .form-group { margin-bottom: 14px; }
+  .form-group label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+  }
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.85rem;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-group input:focus,
+  .form-group select:focus,
+  .form-group textarea:focus { border-color: var(--accent); }
+  .form-group textarea { resize: vertical; min-height: 80px; }
+  .form-group select option { background: var(--surface2); }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
+  .btn-primary {
+    flex: 1;
+    padding: 11px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-secondary {
+    padding: 11px 20px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+  .btn-secondary:hover { color: var(--text); }
+
+  /* GEOCODE HINT */
+  .geo-hint {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .geo-status { font-size: 0.72rem; margin-top: 4px; }
+  .geo-status.ok { color: var(--cat-experience); }
+  .geo-status.err { color: var(--cat-restaurant); }
+
+  /* COUNTER BADGE */
+  .count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    font-size: 0.65rem;
+    font-weight: 600;
+    background: rgba(255,255,255,0.1);
+    margin-left: 4px;
+  }
+
+  /* MOBILE */
+  @media (max-width: 600px) {
+    header { padding: 10px 12px; }
+    .logo { font-size: 1rem; }
+    .cat-filters { gap: 4px; }
+    .cat-btn { font-size: 0.7rem; padding: 4px 9px; }
+    .btn-add { font-size: 0.75rem; padding: 6px 12px; }
+    .form-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="city-s">Seoul</span>
+    <span class="sep">×</span>
+    <span class="city-t">Tokyo</span>
+  </div>
+
+  <div class="city-tabs">
+    <button class="city-tab active-all" onclick="filterCity('all')">Tutte</button>
+    <button class="city-tab" onclick="filterCity('seoul')" id="tab-seoul">🇰🇷 Seoul</button>
+    <button class="city-tab" onclick="filterCity('tokyo')" id="tab-tokyo">🇯🇵 Tokyo</button>
+  </div>
+
+  <div class="cat-filters" id="catFilters">
+    <button class="cat-btn active" data-cat="restaurant" onclick="toggleCat('restaurant')">
+      <span class="dot" style="background:var(--cat-restaurant)"></span>Ristoranti
+    </button>
+    <button class="cat-btn active" data-cat="bar" onclick="toggleCat('bar')">
+      <span class="dot" style="background:var(--cat-bar)"></span>Bar & Locali
+    </button>
+    <button class="cat-btn active" data-cat="museum" onclick="toggleCat('museum')">
+      <span class="dot" style="background:var(--cat-museum)"></span>Musei
+    </button>
+    <button class="cat-btn active" data-cat="shop" onclick="toggleCat('shop')">
+      <span class="dot" style="background:var(--cat-shop)"></span>Shopping
+    </button>
+    <button class="cat-btn active" data-cat="experience" onclick="toggleCat('experience')">
+      <span class="dot" style="background:var(--cat-experience)"></span>Esperienze
+    </button>
+    <button class="cat-btn active" data-cat="hotel" onclick="toggleCat('hotel')">
+      <span class="dot" style="background:var(--cat-hotel)"></span>Hotel
+    </button>
+    <button class="cat-btn active" data-cat="other" onclick="toggleCat('other')">
+      <span class="dot" style="background:var(--cat-other)"></span>Altro
+    </button>
+  </div>
+
+  <button class="btn-add" onclick="openModal()">＋ Aggiungi</button>
+</header>
+
+<div id="map"></div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h2>Aggiungi un luogo</h2>
+    <div class="form-group">
+      <label>Nome *</label>
+      <input type="text" id="f-name" placeholder="es. Tosokchon Samgyetang">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Città *</label>
+        <select id="f-city">
+          <option value="seoul">🇰🇷 Seoul</option>
+          <option value="tokyo">🇯🇵 Tokyo</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Categoria *</label>
+        <select id="f-cat">
+          <option value="restaurant">Ristorante</option>
+          <option value="bar">Bar & Locale</option>
+          <option value="museum">Museo</option>
+          <option value="shop">Shopping</option>
+          <option value="experience">Esperienza</option>
+          <option value="hotel">Hotel</option>
+          <option value="other">Altro</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Indirizzo *</label>
+      <input type="text" id="f-address" placeholder="es. 5 Jahamun-ro, Jongno-gu, Seoul">
+      <div class="geo-hint">Scrivi l'indirizzo e clicca "Cerca coordinate"</div>
+      <button class="btn-secondary" style="margin-top:8px;font-size:0.75rem;padding:6px 14px" onclick="geocode()">🔍 Cerca coordinate</button>
+      <div class="geo-status" id="geoStatus"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Latitudine</label>
+        <input type="number" id="f-lat" step="0.000001" placeholder="37.5665">
+      </div>
+      <div class="form-group">
+        <label>Longitudine</label>
+        <input type="number" id="f-lng" step="0.000001" placeholder="126.9780">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Orari</label>
+      <input type="text" id="f-hours" placeholder="es. Mar-Dom 11:00–21:00 · Lunedì chiuso">
+    </div>
+    <div class="form-group">
+      <label>Giorni apertura</label>
+      <input type="text" id="f-days" placeholder="es. Tutti i giorni · Chiuso lun">
+    </div>
+    <div class="form-group">
+      <label>Descrizione</label>
+      <textarea id="f-desc" placeholder="Note, consigli, cosa ordinare..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>Link (sito / Instagram / Google Maps)</label>
+      <input type="url" id="f-link" placeholder="https://...">
+    </div>
+    <div class="modal-btns">
+      <button class="btn-secondary" onclick="closeModal()">Annulla</button>
+      <button class="btn-primary" onclick="savePlace()">Salva luogo</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getDatabase, ref, set, onValue, remove, push } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyC5yni_eEvmcw4JiOYlhhTZDkIvXGjDmrI",
+    authDomain: "seoul-tokyo-map.firebaseapp.com",
+    databaseURL: "https://seoul-tokyo-map-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "seoul-tokyo-map",
+    storageBucket: "seoul-tokyo-map.firebasestorage.app",
+    messagingSenderId: "660171326156",
+    appId: "1:660171326156:web:558f7a72e6bda51143b869"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  // ── INITIAL DATA ──────────────────────────────────────────────
+  const initialPlaces = [
+    // HOTELS
+    { name: "Imperial Palace Boutique Hotel", city: "seoul", cat: "hotel", lat: 37.5344, lng: 126.9916, hours: "Check-in 15:00 · Check-out 11:00", days: "Tutti i giorni", desc: "Hotel boutique in Itaewon, posizione centrale per esplorare Seoul.", link: "https://www.imperialpalaceseoul.com" },
+    { name: "APA Hotel Higashi-Shinjuku Kabukicho Tower", city: "tokyo", cat: "hotel", lat: 35.6960, lng: 139.7036, hours: "Check-in 15:00 · Check-out 11:00", days: "Tutti i giorni", desc: "Hotel torre a Kabukicho, cuore del nightlife di Shinjuku. Golden Gai a 3 minuti.", link: "https://www.apahotel.com" },
+
+    // SEOUL — RISTORANTI
+    { name: "Tosokchon Samgyetang (토속촌 삼계탕)", city: "seoul", cat: "restaurant", lat: 37.5794, lng: 126.9697, hours: "10:00–22:00", days: "Tutti i giorni", desc: "Storico ristorante di ginseng chicken soup. Coda normale ma vale l'attesa. Ordinare il samgyetang classico.", link: "https://tosokchon.com" },
+    { name: "Gwangjang Market (광장시장)", city: "seoul", cat: "restaurant", lat: 37.5700, lng: 126.9990, hours: "09:00–23:00", days: "Tutti i giorni (alcuni stand chiudono lun)", desc: "Mercato storico del 1905. Street food autentico: bindaetteok (frittella di mung bean), mayak gimbap, yukhoe (tartare). Preferire l'interno.", link: "https://maps.app.goo.gl/gwangjang" },
+    { name: "Noryangjin Fish Market (노량진수산시장)", city: "seoul", cat: "restaurant", lat: 37.5136, lng: 126.9425, hours: "24h (più vivace di notte e mattina presto)", days: "Tutti i giorni", desc: "Mercato del pesce aperto 24h. Scegli il pesce direttamente dalle vasche e lo preparano al piano di sopra. Esperienza unica.", link: "https://www.noryangjin.com" },
+    { name: "Maple Tree House Itaewon (메이플트리하우스)", city: "seoul", cat: "restaurant", lat: 37.5346, lng: 126.9947, hours: "12:00–22:00", days: "Tutti i giorni", desc: "Galbi (costolette di manzo) premium in ambiente curato. Vicino al vostro hotel.", link: "https://www.mapletreehouse.com" },
+
+    // SEOUL — BAR & LOCALI
+    { name: "Euljiro Underground Bar District (을지로)", city: "seoul", cat: "bar", lat: 37.5659, lng: 126.9908, hours: "18:00–02:00", days: "Mar–Dom", desc: "Zona di bar nascosti tra i laboratori artigiani. Cercare: Volldamm, Sik Gaek, Bar dal. Atmosfera underground unica.", link: "https://maps.app.goo.gl/euljiro" },
+    { name: "Magpie Brewing Itaewon (매그파이 브루잉)", city: "seoul", cat: "bar", lat: 37.5353, lng: 126.9937, hours: "17:00–24:00", days: "Tutti i giorni", desc: "Craft brewery artigianale con birre eccellenti. Ambiente rilassato, spesso live music. Molto vicino al vostro hotel.", link: "https://magpiebrewing.com" },
+    { name: "Soap Seoul (소프 서울)", city: "seoul", cat: "bar", lat: 37.5367, lng: 126.9920, hours: "22:00–05:00", days: "Ven–Dom", desc: "Club LGBTQ+-friendly a Itaewon. Musica house ed elettronica, ambiente inclusivo e rilassato.", link: "https://www.instagram.com/soap_seoul" },
+    { name: "Trance (트랜스)", city: "seoul", cat: "bar", lat: 37.5358, lng: 126.9925, hours: "22:00–06:00", days: "Ven–Dom", desc: "Bar/club gay-friendly storico di Itaewon. Clientela mista locale e internazionale.", link: "https://www.instagram.com/trance_itaewon" },
+
+    // SEOUL — MUSEI & CULTURA
+    { name: "Arario Museum in Space (아라리오뮤지엄 인 스페이스)", city: "seoul", cat: "museum", lat: 37.5796, lng: 126.9811, hours: "10:00–19:00", days: "Mar–Dom (chiuso lunedì)", desc: "Arte contemporanea coreana e internazionale in un edificio anni '70. Molto più interessante dei musei mainstream. Ingresso ₩15,000.", link: "https://arariomuseum.org" },
+    { name: "Ikseon-dong Hanok Village (익선동)", city: "seoul", cat: "experience", lat: 37.5730, lng: 126.9987, hours: "Sempre aperto (negozi 11:00–22:00)", days: "Tutti i giorni", desc: "Vicoli con case hanok degli anni '30. Più autentico di Bukchon, pieno di café indipendenti e botteghe. Ideale la sera.", link: "https://maps.app.goo.gl/ikseon" },
+    { name: "Seongsu-dong (성수동)", city: "seoul", cat: "experience", lat: 37.5447, lng: 127.0557, hours: "Di giorno e sera", days: "Tutti i giorni", desc: "'Brooklyn di Seoul'. Ex zona industriale ora piena di concept store, caffè in vecchie fabbriche, gallerie. Ottimo il weekend.", link: "https://maps.app.goo.gl/seongsu" },
+    { name: "Mangwon Market (망원시장)", city: "seoul", cat: "experience", lat: 37.5563, lng: 126.9037, hours: "08:00–22:00", days: "Tutti i giorni (alcuni negozi chiusi lun)", desc: "Mercato locale autentico. Zero turisti. Street food a prezzi locali, atmosfera vera del quartiere. Da abbinare a passeggiata sul fiume Mapo.", link: "https://maps.app.goo.gl/mangwon" },
+
+    // SEOUL — SHOPPING
+    { name: "Dongdaemun Design Plaza (DDP)", city: "seoul", cat: "shop", lat: 37.5669, lng: 127.0089, hours: "10:00–22:00", days: "Tutti i giorni", desc: "Edificio futuristico di Zaha Hadid. Mercato di moda notturno all'esterno, mostre design all'interno. Animato di notte.", link: "https://www.ddp.or.kr" },
+
+    // TOKYO — RISTORANTI
+    { name: "Omoide Yokocho — Piss Alley (思い出横丁)", city: "tokyo", cat: "restaurant", lat: 35.6939, lng: 139.6995, hours: "17:00–24:00", days: "Tutti i giorni", desc: "Vicolo fumoso di yakitori anni '50 accanto a Shinjuku station. Minuscoli banconi, atmosfera da film Miyazaki. Prendere qualsiasi sgabello libero.", link: "https://maps.app.goo.gl/piss-alley" },
+    { name: "Ichiran Ramen Shinjuku (一蘭 新宿店)", city: "tokyo", cat: "restaurant", lat: 35.6934, lng: 139.7006, hours: "24h", days: "Tutti i giorni", desc: "Ramen tonkotsu mangiato in box solitari. Esperienza unica: ordini su foglio, nessun contatto umano necessario. Vicinissimo all'hotel.", link: "https://ichiran.com" },
+    { name: "Depachika — Isetan Shinjuku B2", city: "tokyo", cat: "restaurant", lat: 35.6919, lng: 139.7029, hours: "10:00–20:00", days: "Tutti i giorni", desc: "Piano interrato del grande magazzino Isetan: il miglior cibo gourmet di Tokyo. Sushi, wagashi, bento premium. Acquistare e mangiare al parco.", link: "https://www.isetan.mistore.jp/shinjuku" },
+
+    // TOKYO — BAR & LOCALI
+    { name: "Shinjuku Golden Gai (新宿ゴールデン街)", city: "tokyo", cat: "bar", lat: 35.6952, lng: 139.7043, hours: "20:00–04:00", days: "Tutti i giorni (alcuni bar solo ven-sab)", desc: "6 vicoli con 200 bar minuscoli (4-8 posti ciascuno). Ogni bar ha un tema: jazz, anime, rock. Cercare bar con 'Welcome' in vetrina. A 5 minuti dall'hotel.", link: "https://maps.app.goo.gl/golden-gai" },
+    { name: "Arty Farty — Bar LGBTQ+ Shinjuku Ni-chome", city: "tokyo", cat: "bar", lat: 35.6895, lng: 139.7082, hours: "18:00–05:00", days: "Tutti i giorni", desc: "Bar storico gay-friendly nel quartiere Ni-chome, il più grande distretto LGBTQ+ dell'Asia. Musica, clientela internazionale, ambiente festoso.", link: "https://www.instagram.com/artyfarty_tokyo" },
+    { name: "Ni-chome (新宿二丁目)", city: "tokyo", cat: "bar", lat: 35.6893, lng: 139.7085, hours: "Sera fino a tarda notte", days: "Tutti i giorni", desc: "Il distretto LGBTQ+ più grande dell'Asia. Centinaia di bar gay, lesbici e queer in pochi isolati. Imperdibile per una serata.", link: "https://maps.app.goo.gl/nichome" },
+    { name: "Koenji Live Houses (高円寺)", city: "tokyo", cat: "bar", lat: 35.7057, lng: 139.6495, hours: "Sera", days: "Ven–Dom specialmente", desc: "Quartiere alternativo con bar indie, vintage shop e live house. Atmosfera lontanissima dal turismo. Prendere la Chuo Line.", link: "https://maps.app.goo.gl/koenji" },
+
+    // TOKYO — MUSEI & CULTURA
+    { name: "Intermediatheque (インターメディアテク)", city: "tokyo", cat: "museum", lat: 35.6799, lng: 139.7645, hours: "11:00–18:00 (ven-sab fino alle 20:00)", days: "Mar–Dom (chiuso lun-mar)", desc: "Museo straordinario di design e storia naturale nel palazzo storico delle Poste. Gratuito. Scheletri, tassidermia, oggetti scientifici Meiji. Nascosto ma iconico.", link: "https://www.intermediatheque.jp" },
+    { name: "Tokyo Photographic Art Museum (東京都写真美術館)", city: "tokyo", cat: "museum", lat: 35.6483, lng: 139.7034, hours: "10:00–18:00 (gio-ven fino alle 20:00)", days: "Mar–Dom (chiuso lunedì)", desc: "Museo fotografico di altissimo livello a Yebisu Garden Place. Mostre sempre interessanti, spesso gratuite. Molto tranquillo.", link: "https://topmuseum.jp" },
+    { name: "Yanaka Ginza (谷中銀座)", city: "tokyo", cat: "experience", lat: 35.7267, lng: 139.7680, hours: "10:00–19:00 (varia per negozio)", days: "Tutti i giorni", desc: "Shopping street della vecchia Tokyo anni '50 sopravvissuta ai bombardamenti. Negozietti, tofu fresco, gatti, atmosfera Showa Era. Prendere la Yamanote line.", link: "https://maps.app.goo.gl/yanaka" },
+    { name: "Shimokitazawa (下北沢)", city: "tokyo", cat: "experience", lat: 35.6615, lng: 139.6682, hours: "Di giorno e sera", days: "Tutti i giorni", desc: "Quartiere boho con teatro underground, mercatini vintage, live house, café. Amato dai giovani tokyoti. Raggiungibile con Odakyu Line.", link: "https://maps.app.goo.gl/shimokitazawa" },
+
+    // TOKYO — SHOPPING
+    { name: "Koenji Vintage Shops", city: "tokyo", cat: "shop", lat: 35.7060, lng: 139.6490, hours: "12:00–20:00", days: "Tutti i giorni (alcuni chiudono mer)", desc: "La mecca del vintage a Tokyo. Negozi come Nanbara, Kitsch, Chicago Koenji. Prezzi ottimi rispetto a Harajuku.", link: "https://maps.app.goo.gl/koenji-vintage" },
+  ];
+
+  // ── MAP SETUP ─────────────────────────────────────────────────
+  const map = L.map('map', { zoomControl: true }).setView([35.5, 133.5], 5);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap © CARTO',
+    subdomains: 'abcd', maxZoom: 19
+  }).addTo(map);
+
+  // ── STATE ─────────────────────────────────────────────────────
+  let allMarkers = {}; // keyed by firebase key
+  let activeCity = 'all';
+  let activeCats = new Set(['restaurant','bar','museum','shop','experience','hotel','other']);
+
+  const CAT_COLORS = {
+    restaurant: '#e07a5f', bar: '#9b72cf', museum: '#5c9ead',
+    shop: '#e8a838', experience: '#6ab187', hotel: '#e8d5b0', other: '#888'
+  };
+  const CAT_ICONS = {
+    restaurant: '🍜', bar: '🍸', museum: '🏛', shop: '🛍', experience: '✨', hotel: '🏨', other: '📍'
+  };
+  const CAT_LABELS = {
+    restaurant: 'Ristorante', bar: 'Bar & Locale', museum: 'Museo',
+    shop: 'Shopping', experience: 'Esperienza', hotel: 'Hotel', other: 'Altro'
+  };
+  const CITY_LABELS = { seoul: '🇰🇷 Seoul', tokyo: '🇯🇵 Tokyo' };
+
+  function makeIcon(cat) {
+    const color = CAT_COLORS[cat] || '#888';
+    const icon = CAT_ICONS[cat] || '📍';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44">
+      <filter id="s"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.5)"/></filter>
+      <path fill="${color}" filter="url(#s)" d="M18 0C8 0 0 8 0 18c0 12 18 26 18 26S36 30 36 18C36 8 28 0 18 0z"/>
+      <circle cx="18" cy="18" r="11" fill="rgba(0,0,0,0.35)"/>
+      <text x="18" y="23" text-anchor="middle" font-size="13">${icon}</text>
+    </svg>`;
+    return L.divIcon({
+      html: svg, className: '', iconSize: [36, 44], iconAnchor: [18, 44], popupAnchor: [0, -44]
+    });
+  }
+
+  function buildPopup(place, key) {
+    const color = CAT_COLORS[place.cat] || '#888';
+    const catLabel = CAT_LABELS[place.cat] || place.cat;
+    const cityLabel = CITY_LABELS[place.city] || place.city;
+    let html = `
+      <span class="popup-cat-badge" style="background:${color}20;color:${color}">${catLabel}</span>
+      <div class="popup-name">${place.name}</div>
+      <div class="popup-city-badge">${cityLabel}</div>`;
+    if (place.hours || place.days) {
+      html += `<div class="popup-hours">`;
+      if (place.days) html += `<strong>${place.days}</strong><br>`;
+      if (place.hours) html += place.hours;
+      html += `</div>`;
+    }
+    if (place.desc) html += `<div class="popup-desc">${place.desc}</div>`;
+    html += `<div class="popup-actions">`;
+    if (place.link) html += `<a class="popup-link" href="${place.link}" target="_blank">🔗 Apri link</a>`;
+    html += `<button class="popup-delete" onclick="deletePlace('${key}')">🗑 Rimuovi</button>`;
+    html += `</div>`;
+    return html;
+  }
+
+  function addMarker(key, place) {
+    const marker = L.marker([place.lat, place.lng], { icon: makeIcon(place.cat) })
+      .bindPopup(buildPopup(place, key), { maxWidth: 280 })
+      .addTo(map);
+    allMarkers[key] = { marker, place };
+    applyFilters();
+  }
+
+  function applyFilters() {
+    Object.entries(allMarkers).forEach(([key, { marker, place }]) => {
+      const cityOk = activeCity === 'all' || place.city === activeCity;
+      const catOk = activeCats.has(place.cat);
+      if (cityOk && catOk) map.addLayer(marker);
+      else map.removeLayer(marker);
+    });
+  }
+
+  // ── FIREBASE ──────────────────────────────────────────────────
+  const placesRef = ref(db, 'places');
+
+  // Load initial data only if db is empty
+  onValue(placesRef, (snapshot) => {
+    // Clear existing markers
+    Object.values(allMarkers).forEach(({ marker }) => map.removeLayer(marker));
+    allMarkers = {};
+
+    if (!snapshot.exists()) {
+      // First run: seed initial data
+      initialPlaces.forEach(p => push(placesRef, p));
+    } else {
+      snapshot.forEach(child => {
+        addMarker(child.key, child.val());
+      });
+    }
+  });
+
+  // ── DELETE ────────────────────────────────────────────────────
+  window.deletePlace = function(key) {
+    if (confirm('Rimuovere questo luogo dalla mappa?')) {
+      remove(ref(db, 'places/' + key));
+    }
+  };
+
+  // ── FILTERS ───────────────────────────────────────────────────
+  window.filterCity = function(city) {
+    activeCity = city;
+    document.querySelectorAll('.city-tab').forEach(b => {
+      b.className = 'city-tab';
+      if ((city === 'all' && b.textContent.includes('Tutte')) ||
+          (city === 'seoul' && b.textContent.includes('Seoul')) ||
+          (city === 'tokyo' && b.textContent.includes('Tokyo'))) {
+        b.classList.add(`active-${city}`);
+      }
+    });
+    applyFilters();
+    // Fly to city
+    if (city === 'seoul') map.flyTo([37.5665, 126.9780], 13, { duration: 1.2 });
+    else if (city === 'tokyo') map.flyTo([35.6940, 139.7034], 13, { duration: 1.2 });
+    else map.flyTo([35.5, 133.5], 5, { duration: 1.2 });
+  };
+
+  window.toggleCat = function(cat) {
+    if (activeCats.has(cat)) activeCats.delete(cat);
+    else activeCats.add(cat);
+    const btn = document.querySelector(`.cat-btn[data-cat="${cat}"]`);
+    btn.classList.toggle('active');
+    applyFilters();
+  };
+
+  // ── MODAL ─────────────────────────────────────────────────────
+  window.openModal = function() {
+    document.getElementById('modalOverlay').classList.add('open');
+  };
+  window.closeModal = function() {
+    document.getElementById('modalOverlay').classList.remove('open');
+    clearForm();
+  };
+  document.getElementById('modalOverlay').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+
+  function clearForm() {
+    ['f-name','f-address','f-hours','f-days','f-desc','f-link'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('f-lat').value = '';
+    document.getElementById('f-lng').value = '';
+    document.getElementById('geoStatus').textContent = '';
+  }
+
+  // ── GEOCODE ───────────────────────────────────────────────────
+  window.geocode = async function() {
+    const address = document.getElementById('f-address').value.trim();
+    const city = document.getElementById('f-city').value;
+    const status = document.getElementById('geoStatus');
+    if (!address) { status.textContent = 'Inserisci un indirizzo.'; status.className = 'geo-status err'; return; }
+    status.textContent = '⏳ Ricerca in corso...'; status.className = 'geo-status';
+    const query = encodeURIComponent(address + ', ' + (city === 'seoul' ? 'Seoul, South Korea' : 'Tokyo, Japan'));
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}&limit=1`);
+      const data = await res.json();
+      if (data.length > 0) {
+        document.getElementById('f-lat').value = parseFloat(data[0].lat).toFixed(6);
+        document.getElementById('f-lng').value = parseFloat(data[0].lon).toFixed(6);
+        status.textContent = `✅ Trovato: ${data[0].display_name.split(',').slice(0,3).join(',')}`;
+        status.className = 'geo-status ok';
+      } else {
+        status.textContent = '❌ Non trovato. Prova con un indirizzo più semplice o inserisci lat/lng manualmente.';
+        status.className = 'geo-status err';
+      }
+    } catch (e) {
+      status.textContent = '❌ Errore di rete.'; status.className = 'geo-status err';
+    }
+  };
+
+  // ── SAVE ──────────────────────────────────────────────────────
+  window.savePlace = function() {
+    const name = document.getElementById('f-name').value.trim();
+    const lat = parseFloat(document.getElementById('f-lat').value);
+    const lng = parseFloat(document.getElementById('f-lng').value);
+    if (!name) { alert('Inserisci il nome del luogo.'); return; }
+    if (isNaN(lat) || isNaN(lng)) { alert('Coordinate mancanti. Usa il pulsante "Cerca coordinate".'); return; }
+    const place = {
+      name,
+      city: document.getElementById('f-city').value,
+      cat: document.getElementById('f-cat').value,
+      lat, lng,
+      hours: document.getElementById('f-hours').value.trim(),
+      days: document.getElementById('f-days').value.trim(),
+      desc: document.getElementById('f-desc').value.trim(),
+      link: document.getElementById('f-link').value.trim()
+    };
+    push(placesRef, place).then(() => {
+      closeModal();
+    }).catch(err => alert('Errore salvataggio: ' + err.message));
+  };
+</script>
+</body>
+</html>
